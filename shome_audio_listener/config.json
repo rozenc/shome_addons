@@ -1,0 +1,11 @@
+{
+  "name": "sHome Audio Listener",
+  "version": "1.0.2",
+  "slug": "shome_audio_listener",
+  "description": "Çamaşır makinesi melodisini tanıyan add-on",
+  "startup": "application",
+  "boot": "auto",
+  "arch": ["amd64", "aarch64", "armv7"],
+  "options": {},
+  "schema": {}
+}
