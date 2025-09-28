@@ -8,7 +8,6 @@
   "host_network": true,
   "privileged": ["SYS_RAWIO", "SYS_ADMIN", "DAC_READ_SEARCH"],
   "devices": ["/dev/snd"],
-  "image": "local/shome_audio_listener",
   "options": {
     "audio_device": "default"
   },
