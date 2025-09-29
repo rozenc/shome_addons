@@ -4,7 +4,7 @@ import time
 import numpy as np
 import sounddevice as sd
 
-CONFIG_PATH = "/data/options.json"
+CONFIG_PATH = "config.json"
 
 def get_audio_device():
     try:
