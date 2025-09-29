@@ -12,18 +12,22 @@ def get_audio_device():
     try:
         with open(CONFIG_PATH, "r") as f:
             config = json.load(f)
-            return config.get("audio_device", "default")
+            device = config.get("audio_device", "plughw:1,0")
+            # Eğer sayı ise index olarak kullan
+            if str(device).isdigit():
+                return int(device)
+            return device
     except Exception as e:
         print(f"[ERROR] Config okunamadı: {e}")
-        return "default"
+        return "plughw:1,0"
 
 def log_ascii_banner(device):
     banner = f"""
-    ╔══════════════════════════════════════╗
-    ║  🎧 sHome Audio Listener Başladı     ║
-    ║  Aktif Ses Cihazı: {device:<20} ║
-    ╚══════════════════════════════════════╝
-    """
+╔══════════════════════════════════════╗
+║  🎧 sHome Audio Listener Başladı     ║
+║  Aktif Ses Cihazı: {device:<20} ║
+╚══════════════════════════════════════╝
+"""
     print(banner)
 
 def test_recording(device):
@@ -32,8 +36,9 @@ def test_recording(device):
         subprocess.run([
             "arecord",
             "-D", device,
+            "-f", "S16_LE",
+            "-r", "44100",
             "-d", "2",
-            "-f", "cd",
             "/dev/null"
         ], check=True)
         print("[INFO] Test kaydı başarılı.")
@@ -41,6 +46,12 @@ def test_recording(device):
         print("[ERROR] 'arecord' komutu bulunamadı. Dockerfile'a alsa-utils eklenmeli.")
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Test kaydı başarısız: {e}")
+
+def list_devices():
+    print("[INFO] Sounddevice tarafından görülen cihazlar:")
+    for idx, dev in enumerate(sd.query_devices()):
+        if dev['max_input_channels'] > 0:
+            print(f"  {idx}: {dev['name']} (inputs: {dev['max_input_channels']})")
 
 def detect_note(device):
     try:
@@ -68,6 +79,7 @@ def detect_note(device):
 def main():
     audio_device = get_audio_device()
     log_ascii_banner(audio_device)
+    list_devices()
     test_recording(audio_device)
     print("[INFO] Dinleyici modülü hazır. Melodi tanıma başlıyor...")
 
