@@ -35,6 +35,11 @@ def test_recording(device):
             "/dev/null"
         ], check=True)
         print("[INFO] Test kaydı başarılı.")
+
+    except FileNotFoundError:
+        print("[ERROR] 'arecord' komutu bulunamadı. Dockerfile'a alsa-utils eklenmeli.")
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Test kaydı başarısız: {e}")
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Test kaydı başarısız: {e}")
 
