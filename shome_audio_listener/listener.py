@@ -10,9 +10,9 @@ def get_audio_device():
     try:
         with open(CONFIG_PATH, "r") as f:
             config = json.load(f)
-            return config.get("audio_device", "plughw:1,0")
+            return config.get("audio_device", "plughw:1,2")
     except:
-        return "plughw:1,0"
+        return "plughw:1,2"
 
 def log_ascii_banner(device):
     print(f"""
