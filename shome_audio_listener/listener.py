@@ -13,7 +13,6 @@ def get_audio_device():
         with open(CONFIG_PATH, "r") as f:
             config = json.load(f)
             device = config.get("audio_device", "plughw:1,0")
-            # Eğer sayı ise index olarak kullan
             if str(device).isdigit():
                 return int(device)
             return device
@@ -38,6 +37,7 @@ def test_recording(device):
             "-D", device,
             "-f", "S16_LE",
             "-r", "44100",
+            "-c", "1",
             "-d", "2",
             "/dev/null"
         ], check=True)
