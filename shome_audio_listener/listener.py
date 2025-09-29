@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-import os
 import json
 import time
-import subprocess
 import numpy as np
 import sounddevice as sd
 
@@ -12,80 +10,42 @@ def get_audio_device():
     try:
         with open(CONFIG_PATH, "r") as f:
             config = json.load(f)
-            device = config.get("audio_device", "plughw:1,0")
-            if str(device).isdigit():
-                return int(device)
-            return device
-    except Exception as e:
-        print(f"[ERROR] Config okunamadı: {e}")
+            return config.get("audio_device", "plughw:1,0")
+    except:
         return "plughw:1,0"
 
 def log_ascii_banner(device):
-    banner = f"""
+    print(f"""
 ╔══════════════════════════════════════╗
 ║  🎧 sHome Audio Listener Başladı     ║
 ║  Aktif Ses Cihazı: {device:<20} ║
 ╚══════════════════════════════════════╝
-"""
-    print(banner)
+""")
 
-def test_recording(device):
-    print(f"[INFO] '{device}' cihazından kısa test kaydı başlatılıyor...")
-    try:
-        subprocess.run([
-            "arecord",
-            "-D", device,
-            "-f", "S16_LE",
-            "-r", "44100",
-            "-c", "1",
-            "-d", "2",
-            "/dev/null"
-        ], check=True)
-        print("[INFO] Test kaydı başarılı.")
-    except FileNotFoundError:
-        print("[ERROR] 'arecord' komutu bulunamadı. Dockerfile'a alsa-utils eklenmeli.")
-    except subprocess.CalledProcessError as e:
-        print(f"[ERROR] Test kaydı başarısız: {e}")
-
-def list_devices():
-    print("[INFO] Sounddevice tarafından görülen cihazlar:")
-    for idx, dev in enumerate(sd.query_devices()):
-        if dev['max_input_channels'] > 0:
-            print(f"  {idx}: {dev['name']} (inputs: {dev['max_input_channels']})")
-
-def detect_note(device):
-    try:
-        duration = 1
-        fs = 44100
-        audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, device=device)
-        sd.wait()
-        audio = audio.flatten()
-        fft = np.fft.fft(audio)
-        freqs = np.fft.fftfreq(len(fft), 1/fs)
-        idx = np.argmax(np.abs(fft[:len(fft)//2]))
-        freq = freqs[idx]
-        print(f"[LOG] Algılanan frekans: {freq:.2f} Hz")
-
-        notes = {
-            261.63: "C4", 293.66: "D4", 329.63: "E4",
-            349.23: "F4", 392.00: "G4", 440.00: "A4", 493.88: "B4"
-        }
-        closest = min(notes.keys(), key=lambda x: abs(x - freq))
-        print(f"[LOG] Yakalanan nota: {notes[closest]} 🎵")
-
-    except Exception as e:
-        print(f"[ERROR] Nota algılama başarısız: {e}")
+def print_level_bar(rms):
+    """RMS değerini terminalde bar olarak göster"""
+    bar_len = int(rms * 50)
+    bar = "#" * bar_len
+    print(f"[LEVEL] |{bar:<50}| {rms:.3f}")
 
 def main():
-    audio_device = get_audio_device()
-    log_ascii_banner(audio_device)
-    list_devices()
-    test_recording(audio_device)
-    print("[INFO] Dinleyici modülü hazır. Melodi tanıma başlıyor...")
+    device = get_audio_device()
+    log_ascii_banner(device)
+
+    duration = 0.2  # kısa aralıklarla örnekleme
+    fs = 44100
 
     while True:
-        detect_note(audio_device)
-        time.sleep(5)
+        try:
+            audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, device=device)
+            sd.wait()
+            audio = audio.flatten()
+            rms = np.sqrt(np.mean(audio**2))
+            print_level_bar(rms)
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"[ERROR] Mikrofon okunamadı: {e}")
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()
