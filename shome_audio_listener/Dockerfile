@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y \
     libasound2-data \
     libasound2-plugins \
     alsa-utils \
-    alsa-plugins \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
