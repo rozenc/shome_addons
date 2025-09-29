@@ -8,7 +8,7 @@
   "arch": ["amd64", "aarch64", "armv7"],
   "host_network": true,
   "devices": ["/dev/snd"],
-  "privileged": true,
+  "audio": true,
   "options": {
     "audio_device": "default"
   },
