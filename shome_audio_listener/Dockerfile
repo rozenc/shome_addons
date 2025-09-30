@@ -11,6 +11,8 @@ RUN apt update && apt install -y \
  && apt clean \
  && rm -rf /var/lib/apt/lists/*
 
+RUN pip3 install --no-cache-dir pyaudio numpy paho-mqtt
+
 WORKDIR /app
 COPY listener.py .
 CMD ["python3", "listener.py"]
