@@ -44,7 +44,7 @@ def main():
             print_level_bar(rms)
             time.sleep(0.1)
         except Exception as e:
-            print(f"[ERROR] Mikrofon okunamadı: {e}")
+            print(f"[ERROR] R Mikrofon okunamadı: {e}")
             time.sleep(1)
 
 if __name__ == "__main__":
