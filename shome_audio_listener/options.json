@@ -1,3 +1,6 @@
 {
-  "device_index": -1
+  "device_index": -1,
+  "mic_gain": 1.0,
+  "rms_threshold": 500,
+  "note_sensitivity": 1.0
 }

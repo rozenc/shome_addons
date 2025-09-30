@@ -13,10 +13,13 @@ MQTT_USER = os.getenv("MQTT_USER", "shome")
 MQTT_PASS = os.getenv("MQTT_PASS", "a")
 MQTT_TOPIC = "shome/devices/sHome-Listener"
 
+MIC_GAIN = float(os.getenv("MIC_GAIN", "1.0"))
+RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "500"))
+NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "1.0"))
+
 # 🎚️ Ses parametreleri
 CHUNK = 2048
 RATE = 44100
-THRESHOLD = 100  # RMS eşiği
 
 # 🎼 Piyano nota frekansları (A0–C8)
 PIANO_NOTES = []
@@ -50,6 +53,8 @@ def detect_note_from_fft(data):
         return None
 
     closest = min(PIANO_NOTES, key=lambda x: abs(x[1] - peak_freq))
+    if abs(closest[1] - peak_freq) > NOTE_SENSITIVITY:
+        return None
     return closest[0]
 
 # 🚀 Ana döngü
@@ -66,7 +71,7 @@ def main():
         print(f"[ERROR] Cannot open stream: {e}")
         return
 
-    mqttc = mqtt.Client()
+    mqttc = mqtt.Client(protocol=mqtt.MQTTv311)
     mqttc.username_pw_set(MQTT_USER, MQTT_PASS)
     mqttc.connect(MQTT_HOST, MQTT_PORT)
 
@@ -74,9 +79,9 @@ def main():
     while True:
         try:
             data = stream.read(CHUNK, exception_on_overflow=False)
-            rms = get_rms(data)
+            rms = get_rms(data) * MIC_GAIN
 
-            if rms < THRESHOLD:
+            if rms < RMS_THRESHOLD:
                 continue  # Sessizlikte sus
 
             note = detect_note_from_fft(data)
