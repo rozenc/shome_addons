@@ -2,5 +2,9 @@
   "device_index": -1,
   "mic_gain": 1.0,
   "rms_threshold": 500,
-  "note_sensitivity": 1.0
+  "note_sensitivity": 1.0,
+  "mqtt_host": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_user": "shome",
+  "mqtt_pass": "a"
 }
