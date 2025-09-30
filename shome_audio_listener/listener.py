@@ -1,50 +1,50 @@
-#!/usr/bin/env python3
-import json
-import time
+import pyaudio
 import numpy as np
-import sounddevice as sd
+import json
+import os
+import time
+import paho.mqtt.client as mqtt
 
-CONFIG_PATH = "config.json"
+DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
+MQTT_HOST = os.getenv("MQTT_HOST", "homeassistant.local")
+MQTT_TOPIC = "shome/audio_listener"
 
-def get_audio_device():
-    try:
-        with open(CONFIG_PATH, "r") as f:
-            config = json.load(f)
-            return config.get("audio_device", "plughw:2,0")
-    except:
-        return "plughw:2,0"
+CHUNK = 1024
+RATE = 44100
+THRESHOLD = 500
 
-def log_ascii_banner(device):
-    print(f"""
-╔══════════════════════════════════════╗
-║  🎧 sHome Audio Listener Başladı     ║
-║  Aktif Ses Cihazı: {device:<20} ║
-╚══════════════════════════════════════╝
-""")
-
-def print_level_bar(rms):
-    """RMS değerini terminalde bar olarak göster"""
-    bar_len = int(rms * 50)
-    bar = "#" * bar_len
-    print(f"[LEVEL] |{bar:<50}| {rms:.3f}")
+def get_rms(data):
+    samples = np.frombuffer(data, dtype=np.int16)
+    rms = np.sqrt(np.mean(samples**2))
+    return rms
 
 def main():
-    device = get_audio_device()
-    log_ascii_banner(device)
+    p = pyaudio.PyAudio()
+    try:
+        stream = p.open(format=pyaudio.paInt16,
+                        channels=1,
+                        rate=RATE,
+                        input=True,
+                        input_device_index=DEVICE_INDEX,
+                        frames_per_buffer=CHUNK)
+    except Exception as e:
+        print(f"[ERROR] Cannot open stream: {e}")
+        return
 
-    duration = 0.2  # kısa aralıklarla örnekleme
-    fs = 44100
+    mqttc = mqtt.Client()
+    mqttc.connect(MQTT_HOST)
 
+    print("[START] Listening via PulseAudio...")
     while True:
         try:
-            audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, device=device)
-            sd.wait()
-            audio = audio.flatten()
-            rms = np.sqrt(np.mean(audio**2))
-            print_level_bar(rms)
-            time.sleep(0.1)
+            data = stream.read(CHUNK, exception_on_overflow=False)
+            rms = get_rms(data)
+            print(f"[LEVEL] {rms:.2f}")
+            if rms > THRESHOLD:
+                mqttc.publish(MQTT_TOPIC, json.dumps({"level": rms, "timestamp": time.time()}))
+                print("[MQTT] Triggered")
         except Exception as e:
-            print(f"[ERROR] R Mikrofon okunamadı: {e}")
+            print(f"[ERROR] Stream read failed: {e}")
             time.sleep(1)
 
 if __name__ == "__main__":
