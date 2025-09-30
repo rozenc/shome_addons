@@ -5,6 +5,7 @@ import os
 import time
 import paho.mqtt.client as mqtt
 
+# 🔧 Ortam değişkenleri
 DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -12,15 +13,46 @@ MQTT_USER = os.getenv("MQTT_USER", "shome")
 MQTT_PASS = os.getenv("MQTT_PASS", "a")
 MQTT_TOPIC = "shome/devices/sHome-Listener"
 
-CHUNK = 1024
+# 🎚️ Ses parametreleri
+CHUNK = 2048
 RATE = 44100
-THRESHOLD = 500
+THRESHOLD = 100  # RMS eşiği
 
+# 🎼 Piyano nota frekansları (A0–C8)
+PIANO_NOTES = []
+NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+for i in range(21, 109):  # MIDI 21–108
+    freq = 440.0 * (2 ** ((i - 69) / 12))
+    name = NOTE_NAMES[i % 12] + str((i // 12) - 1)
+    PIANO_NOTES.append((name, freq))
+
+# 📐 RMS hesaplama (fail-safe)
 def get_rms(data):
     samples = np.frombuffer(data, dtype=np.int16)
-    rms = np.sqrt(np.mean(samples**2))
-    return rms
+    if samples.size == 0:
+        return 0.0
+    rms = np.sqrt(np.mean(samples.astype(np.float32)**2))
+    return float(rms)
 
+# 🎼 FFT ile nota tahmini
+def detect_note_from_fft(data):
+    samples = np.frombuffer(data, dtype=np.int16)
+    if samples.size == 0:
+        return None
+
+    fft = np.fft.fft(samples)
+    freqs = np.fft.fftfreq(len(fft), 1.0 / RATE)
+    magnitude = np.abs(fft)
+    peak_index = np.argmax(magnitude[:len(magnitude)//2])
+    peak_freq = abs(freqs[peak_index])
+
+    if peak_freq < 20 or peak_freq > 5000:
+        return None
+
+    closest = min(PIANO_NOTES, key=lambda x: abs(x[1] - peak_freq))
+    return closest[0]
+
+# 🚀 Ana döngü
 def main():
     p = pyaudio.PyAudio()
     try:
@@ -43,15 +75,20 @@ def main():
         try:
             data = stream.read(CHUNK, exception_on_overflow=False)
             rms = get_rms(data)
-            print(f"[LEVEL] {rms:.2f}")
-            if rms > THRESHOLD:
+
+            if rms < THRESHOLD:
+                continue  # Sessizlikte sus
+
+            note = detect_note_from_fft(data)
+            if note:
+                print(f"[NOTE] {note} 🎹 (RMS: {rms:.2f})")
                 mqttc.publish(MQTT_TOPIC, json.dumps({
+                    "note": note,
                     "level": rms,
                     "timestamp": time.time()
                 }))
-                print("[MQTT] Triggered")
         except Exception as e:
-            print(f"[ERROR] Stream read failed: {e}")
+            print(f"\n[ERROR] Stream read failed: {e}")
             time.sleep(1)
 
 if __name__ == "__main__":
