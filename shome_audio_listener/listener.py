@@ -6,8 +6,11 @@ import time
 import paho.mqtt.client as mqtt
 
 DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
-MQTT_HOST = os.getenv("MQTT_HOST", "homeassistant.local")
-MQTT_TOPIC = "shome/audio_listener"
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USER = os.getenv("MQTT_USER", "shome")
+MQTT_PASS = os.getenv("MQTT_PASS", "a")
+MQTT_TOPIC = "shome/devices/sHome-Listener"
 
 CHUNK = 1024
 RATE = 44100
@@ -32,7 +35,8 @@ def main():
         return
 
     mqttc = mqtt.Client()
-    mqttc.connect(MQTT_HOST)
+    mqttc.username_pw_set(MQTT_USER, MQTT_PASS)
+    mqttc.connect(MQTT_HOST, MQTT_PORT)
 
     print("[START] Listening via PulseAudio...")
     while True:
@@ -41,7 +45,10 @@ def main():
             rms = get_rms(data)
             print(f"[LEVEL] {rms:.2f}")
             if rms > THRESHOLD:
-                mqttc.publish(MQTT_TOPIC, json.dumps({"level": rms, "timestamp": time.time()}))
+                mqttc.publish(MQTT_TOPIC, json.dumps({
+                    "level": rms,
+                    "timestamp": time.time()
+                }))
                 print("[MQTT] Triggered")
         except Exception as e:
             print(f"[ERROR] Stream read failed: {e}")

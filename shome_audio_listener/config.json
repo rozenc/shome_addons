@@ -1,6 +1,6 @@
 {
   "name": "sHome Audio Listener",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "slug": "shome_audio_listener",
   "description": "Çamaşır makinesi melodisini tanıyan add-on (PulseAudio)",
   "startup": "application",
@@ -10,9 +10,17 @@
   "audio": true,
   "devices": ["/dev/snd:/dev/snd:rwm"],
   "options": {
-    "device_index": -1
+    "device_index": -1,
+    "mqtt_host": "localhost",
+    "mqtt_port": 1883,
+    "mqtt_user": "shome",
+    "mqtt_pass": "a"
   },
   "schema": {
-    "device_index": "int"
+    "device_index": "int",
+    "mqtt_host": "str",
+    "mqtt_port": "int",
+    "mqtt_user": "str",
+    "mqtt_pass": "str"
   }
 }

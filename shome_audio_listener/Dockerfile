@@ -6,10 +6,11 @@ RUN apt update && apt install -y \
     libportaudio2 \
     libportaudiocpp0 \
     portaudio19-dev \
-    build-essential
+    pulseaudio \
+    build-essential \
+ && apt clean \
+ && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install pyaudio numpy paho-mqtt
-
-COPY listener.py /listener.py
-
-CMD ["python3", "/listener.py"]
+WORKDIR /app
+COPY listener.py .
+CMD ["python3", "listener.py"]
