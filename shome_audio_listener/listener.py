@@ -71,7 +71,7 @@ def main():
         print(f"[ERROR] Cannot open stream: {e}")
         return
 
-    mqttc = mqtt.Client()
+    mqttc = mqtt.Client(protocol=mqtt.MQTTv5)
     mqttc.username_pw_set(MQTT_USER, MQTT_PASS)
     mqttc.connect(MQTT_HOST, MQTT_PORT)
 
@@ -90,13 +90,13 @@ def main():
                     print(f"[NOTE] {note} 🎹 (RMS: {rms:.2f})")
                     mqttc.publish(MQTT_TOPIC, json.dumps({
                         "note": note,
-                        "level": rms,
+                        "level": float(rms),
                         "timestamp": time.time()
                     }))
             else:
                 print(f"[LEVEL] {rms:.2f}")
                 mqttc.publish(MQTT_TOPIC, json.dumps({
-                    "level": rms,
+                    "level": float(rms),
                     "timestamp": time.time()
                 }))
         except Exception as e:
