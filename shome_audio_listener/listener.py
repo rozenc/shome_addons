@@ -32,7 +32,7 @@ for i in range(21, 109):  # MIDI 21–108
 # 📐 RMS hesaplama (sade)
 def get_rms(data):
     samples = np.frombuffer(data, dtype=np.int16)
-    if samples.size == 0:
+    if samples.size == 0 or np.isnan(np.mean(samples)):
         return 0.0
     rms = np.sqrt(np.mean(samples**2))
     return rms
