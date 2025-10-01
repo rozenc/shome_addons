@@ -33,29 +33,6 @@ for i in range(21, 109):  # MIDI 21–108
     name = NOTE_NAMES[i % 12] + str((i // 12) - 1)
     PIANO_NOTES.append((name, freq))
 
-# 📊 Ses analizi için değişkenler
-level_history = deque(maxlen=20)
-last_detection_time = 0
-cooldown_period = 2
-
-def list_audio_devices():
-    """Mevcut ses cihazlarını listele"""
-    p = pyaudio.PyAudio()
-    print("=" * 60)
-    print("Kullanılabilir Ses Giriş Cihazları:")
-    print("=" * 60)
-    
-    input_devices = []
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        if info['maxInputChannels'] > 0:
-            input_devices.append((i, info['name'], info['maxInputChannels']))
-            print(f"Index: {i}, Name: {info['name']}, Channels: {info['maxInputChannels']}")
-    
-    p.terminate()
-    print("=" * 60)
-    return input_devices
-
 # 📐 Geliştirilmiş RMS hesaplama
 def get_rms(data):
     try:
@@ -105,24 +82,23 @@ def detect_note_from_fft(data):
     except Exception as e:
         return None
 
-# 🔍 Melodi tespiti
-def detect_melody_pattern(levels, current_level):
-    level_history.append(current_level)
+def list_audio_devices():
+    """Mevcut ses cihazlarını listele"""
+    p = pyaudio.PyAudio()
+    print("=" * 60)
+    print("Kullanılabilir Ses Giriş Cihazları:")
+    print("=" * 60)
     
-    if len(level_history) < level_history.maxlen:
-        return False
-        
-    recent_levels = list(level_history)
-    level_variance = np.var(recent_levels)
+    input_devices = []
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info['maxInputChannels'] > 0:
+            input_devices.append((i, info['name'], info['maxInputChannels']))
+            print(f"Index: {i}, Name: {info['name']}, Channels: {info['maxInputChannels']}")
     
-    # Melodi genellikle dalgalanmalı bir yapıya sahiptir
-    if level_variance > 100000:
-        peaks = 0
-        for i in range(1, len(recent_levels)-1):
-            if recent_levels[i] > recent_levels[i-1] and recent_levels[i] > recent_levels[i+1]:
-                peaks += 1
-        return peaks >= 3
-    return False
+    p.terminate()
+    print("=" * 60)
+    return input_devices
 
 # 🚀 Ana döngü
 def main():
@@ -173,8 +149,32 @@ def main():
     except Exception as e:
         print(f"[MQTT_ERROR] Bağlantı hatası: {e}")
 
+    # 📊 Ses analizi için değişkenler - BURADA TANIMLA!
+    level_history = deque(maxlen=20)
+    last_detection_time = 0  # ✅ BU SATIR EKLENDİ
+    cooldown_period = 2
+
     print("[START] Çamaşır makinesi melodisi dinleniyor...")
     print(f"[CONFIG] Eşik: {RMS_THRESHOLD}, Kazanç: {MIC_GAIN}, Nota Tespiti: {ENABLE_NOTE_DETECTION}")
+
+    # 🔍 Basit melodi tespiti fonksiyonu
+    def detect_melody_pattern(levels, current_level):
+        level_history.append(current_level)
+        
+        if len(level_history) < level_history.maxlen:
+            return False
+            
+        recent_levels = list(level_history)
+        level_variance = np.var(recent_levels)
+        
+        # Melodi genellikle dalgalanmalı bir yapıya sahiptir
+        if level_variance > 100000:
+            peaks = 0
+            for i in range(1, len(recent_levels)-1):
+                if recent_levels[i] > recent_levels[i-1] and recent_levels[i] > recent_levels[i+1]:
+                    peaks += 1
+            return peaks >= 3
+        return False
 
     while True:
         try:
