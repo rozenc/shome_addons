@@ -9,16 +9,12 @@ import time
 import paho.mqtt.client as mqtt
 from collections import deque
 
-# 🔧 ALSA default'ını ayarla (uyarıları bastır)
-os.environ['ALSA_PCM_CARD'] = '2'
-os.environ['ALSA_CTL_CARD'] = '2'
-
 # 🔧 Ortam değişkenleri
-DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "2"))  # Varsayılanı 2 yap
-MIC_GAIN = float(os.getenv("MIC_GAIN", "2"))
-RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "500"))
+DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
+MIC_GAIN = float(os.getenv("MIC_GAIN", "1.5"))
+RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "1000"))
 ENABLE_NOTE_DETECTION = os.getenv("ENABLE_NOTE_DETECTION", "false").lower() == "true"
-NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "10.0"))
+NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "2.0"))
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER = os.getenv("MQTT_USER", "shome")
@@ -26,7 +22,7 @@ MQTT_PASS = os.getenv("MQTT_PASS", "a")
 MQTT_TOPIC = "shome/devices/sHome-Listener"
 
 # 🎚️ Ses parametreleri
-CHUNK = 4096
+CHUNK = 1024
 RATE = 44100
 
 # 🎼 Piyano nota frekansları (A0–C8)
@@ -37,84 +33,199 @@ for i in range(21, 109):  # MIDI 21–108
     name = NOTE_NAMES[i % 12] + str((i // 12) - 1)
     PIANO_NOTES.append((name, freq))
 
-# 📐 RMS hesaplama (sade)
+# 📊 Ses analizi için değişkenler
+level_history = deque(maxlen=20)
+last_detection_time = 0
+cooldown_period = 2
+
+def list_audio_devices():
+    """Mevcut ses cihazlarını listele"""
+    p = pyaudio.PyAudio()
+    print("=" * 60)
+    print("Kullanılabilir Ses Giriş Cihazları:")
+    print("=" * 60)
+    
+    input_devices = []
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info['maxInputChannels'] > 0:
+            input_devices.append((i, info['name'], info['maxInputChannels']))
+            print(f"Index: {i}, Name: {info['name']}, Channels: {info['maxInputChannels']}")
+    
+    p.terminate()
+    print("=" * 60)
+    return input_devices
+
+# 📐 Geliştirilmiş RMS hesaplama
 def get_rms(data):
-    samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-    if samples.size == 0 or np.isnan(np.mean(samples)):
+    try:
+        samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+        if samples.size == 0 or np.all(samples == 0):
+            return 0.0
+        rms = np.sqrt(np.mean(samples**2))
+        return rms if not np.isnan(rms) else 0.0
+    except:
         return 0.0
-    rms = np.sqrt(np.mean(samples**2))
-    return rms
 
-# 🎼 FFT ile nota tahmini (iyileştirildi)
+# 🎼 Geliştirilmiş FFT ile nota tahmini
 def detect_note_from_fft(data):
-    samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-    if samples.size == 0:
+    try:
+        samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+        if samples.size < 1024:
+            return None
+
+        # Pencereleme için Hamming window
+        window = np.hamming(len(samples))
+        windowed_samples = samples * window
+
+        fft = np.fft.rfft(windowed_samples)
+        freqs = np.fft.rfftfreq(len(windowed_samples), 1.0 / RATE)
+        magnitude = np.abs(fft)
+        
+        # Gürültüyü filtrele
+        magnitude_threshold = np.max(magnitude) * 0.3
+        peak_indices = np.where(magnitude > magnitude_threshold)[0]
+        
+        if len(peak_indices) == 0:
+            return None
+            
+        peak_index = peak_indices[0]
+        peak_freq = freqs[peak_index]
+
+        if peak_freq < 50 or peak_freq > 2000:
+            return None
+
+        closest = min(PIANO_NOTES, key=lambda x: abs(x[1] - peak_freq))
+        freq_diff = abs(closest[1] - peak_freq)
+        
+        if freq_diff > (NOTE_SENSITIVITY * 10):
+            return None
+            
+        return closest[0]
+    except Exception as e:
         return None
 
-    # Hann window uygula
-    window = np.hanning(len(samples))
-    windowed = samples * window
-
-    fft = np.fft.fft(windowed)
-    freqs = np.fft.fftfreq(len(fft), 1.0 / RATE)
-    magnitude = np.abs(fft)
-    peak_index = np.argmax(magnitude[:len(magnitude)//2])
-    peak_freq = abs(freqs[peak_index])
-
-    print(f"[DEBUG] Peak freq: {peak_freq:.2f} Hz")  # Opsiyonel debug (kaldırabilirsin)
-
-    if peak_freq < 20 or peak_freq > 5000:
-        return None
-
-    closest = min(PIANO_NOTES, key=lambda x: abs(x[1] - peak_freq))
-    if abs(closest[1] - peak_freq) > NOTE_SENSITIVITY:
-        return None
-    return closest[0]
+# 🔍 Melodi tespiti
+def detect_melody_pattern(levels, current_level):
+    level_history.append(current_level)
+    
+    if len(level_history) < level_history.maxlen:
+        return False
+        
+    recent_levels = list(level_history)
+    level_variance = np.var(recent_levels)
+    
+    # Melodi genellikle dalgalanmalı bir yapıya sahiptir
+    if level_variance > 100000:
+        peaks = 0
+        for i in range(1, len(recent_levels)-1):
+            if recent_levels[i] > recent_levels[i-1] and recent_levels[i] > recent_levels[i+1]:
+                peaks += 1
+        return peaks >= 3
+    return False
 
 # 🚀 Ana döngü
 def main():
-    p = pyaudio.PyAudio()
-    try:
-        stream = p.open(format=pyaudio.paInt16,
-                        channels=1,
-                        rate=RATE,
-                        input=True,
-                        input_device_index=DEVICE_INDEX,
-                        frames_per_buffer=CHUNK)
-    except Exception as e:
-        print(f"[ERROR] Cannot open stream: {e}")
+    # Önce cihazları listele
+    input_devices = list_audio_devices()
+    
+    if not input_devices:
+        print("[ERROR] Hiçbir ses giriş cihazı bulunamadı!")
         return
+    
+    p = pyaudio.PyAudio()
+    
+    # Stream konfigürasyonu
+    stream_config = {
+        'format': pyaudio.paInt16,
+        'channels': 1,
+        'rate': RATE,
+        'input': True,
+        'frames_per_buffer': CHUNK,
+        'input_device_index': DEVICE_INDEX
+    }
+    
+    try:
+        stream = p.open(**stream_config)
+        print(f"[SUCCESS] Ses akışı açıldı (Cihaz: {DEVICE_INDEX})")
+    except Exception as e:
+        print(f"[ERROR] Akış açılamadı: {e}")
+        print("[INFO] Varsayılan cihaz deneniyor...")
+        try:
+            stream_config['input_device_index'] = None
+            stream = p.open(**stream_config)
+            print("[SUCCESS] Varsayılan cihazla akış açıldı")
+        except Exception as e2:
+            print(f"[FATAL] Hiçbir cihazla akış açılamadı: {e2}")
+            return
 
-    mqttc = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
+    # MQTT istemcisi - DeprecationWarning'den kaçınmak için
+    try:
+        mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    except:
+        mqttc = mqtt.Client()  # Fallback
+    
     mqttc.username_pw_set(MQTT_USER, MQTT_PASS)
-    mqttc.connect(MQTT_HOST, MQTT_PORT)
+    
+    try:
+        mqttc.connect(MQTT_HOST, MQTT_PORT)
+        print(f"[MQTT] {MQTT_HOST}:{MQTT_PORT} bağlantısı kuruldu")
+    except Exception as e:
+        print(f"[MQTT_ERROR] Bağlantı hatası: {e}")
 
-    print("[START] Listening via ALSA...")
+    print("[START] Çamaşır makinesi melodisi dinleniyor...")
+    print(f"[CONFIG] Eşik: {RMS_THRESHOLD}, Kazanç: {MIC_GAIN}, Nota Tespiti: {ENABLE_NOTE_DETECTION}")
+
     while True:
         try:
             data = stream.read(CHUNK, exception_on_overflow=False)
             rms = get_rms(data) * MIC_GAIN
+            current_time = time.time()
 
+            # Cooldown kontrolü
+            if current_time - last_detection_time < cooldown_period:
+                continue
+
+            # Seviye eşiğini aşma kontrolü
             if rms < RMS_THRESHOLD:
                 continue
 
+            # Melodi deseni tespiti
+            is_melody = detect_melody_pattern(level_history, rms)
+            
             if ENABLE_NOTE_DETECTION:
                 note = detect_note_from_fft(data)
                 if note:
-                    print(f"[NOTE] {note} 🎹 (RMS: {rms:.2f})")
+                    print(f"[MELODY] 🎵 {note} (Seviye: {rms:.2f})")
                     mqttc.publish(MQTT_TOPIC, json.dumps({
+                        "type": "melody_detected",
                         "note": note,
                         "level": float(rms),
-                        "timestamp": time.time()
+                        "pattern": is_melody,
+                        "timestamp": current_time
                     }))
+                    last_detection_time = current_time
             else:
-                print(f"[LEVEL] {rms:.2f}")
-                mqttc.publish(MQTT_TOPIC, json.dumps({
-                    "level": float(rms),
-                    "timestamp": time.time()
-                }))
+                if is_melody:
+                    print(f"[MELODY] 🔔 Desen tespit edildi! (Seviye: {rms:.2f})")
+                    mqttc.publish(MQTT_TOPIC, json.dumps({
+                        "type": "melody_pattern",
+                        "level": float(rms),
+                        "timestamp": current_time
+                    }))
+                    last_detection_time = current_time
+                else:
+                    print(f"[LEVEL] {rms:.2f}")
+                    mqttc.publish(MQTT_TOPIC, json.dumps({
+                        "level": float(rms),
+                        "timestamp": current_time
+                    }))
+
+        except IOError as e:
+            # Overflow hataları normaldir, sessizce devam et
+            continue
         except Exception as e:
-            print(f"[ERROR] Stream read failed: {e}")
+            print(f"[ERROR] Akış okuma hatası: {e}")
             time.sleep(1)
 
 if __name__ == "__main__":

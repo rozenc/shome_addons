@@ -1,6 +1,6 @@
 {
   "name": "sHome Audio Listener",
-  "version": "1.0.44",
+  "version": "1.0.45",
   "slug": "shome_audio_listener",
   "description": "Çamaşır melodisini tanıyan, nota eşleştiren ve MQTT ile HA'ya bildiren mikrofon dinleyici.",
   "startup": "application",
@@ -9,12 +9,15 @@
   "host_network": true,
   "audio": true,
   "devices": ["/dev/snd:/dev/snd:rwm"],
+  "environment": {
+    "PYAUDIO_IGNORE_ALSA_PLUGINS": "1"
+  },
   "options": {
     "device_index": -1,
-    "mic_gain": 1,
-    "rms_threshold": 2500,
+    "mic_gain": 1.5,
+    "rms_threshold": 1000,
     "enable_note_detection": false,
-    "note_sensitivity": 1.0,
+    "note_sensitivity": 2.0,
     "mqtt_host": "localhost",
     "mqtt_port": 1883,
     "mqtt_user": "shome",
