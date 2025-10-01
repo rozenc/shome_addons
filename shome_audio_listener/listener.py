@@ -1,5 +1,4 @@
 import os
-# ALSA hata mesajlarını bastır - EN ÜSTTE olmalı
 os.environ['PYAUDIO_IGNORE_ALSA_PLUGINS'] = '1'
 
 import pyaudio
@@ -14,7 +13,7 @@ DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
 MIC_GAIN = float(os.getenv("MIC_GAIN", "1.5"))
 RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "1000"))
 ENABLE_NOTE_DETECTION = os.getenv("ENABLE_NOTE_DETECTION", "false").lower() == "true"
-NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "2.0"))
+NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "20.0"))  # Artırıldı
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER = os.getenv("MQTT_USER", "shome")
@@ -75,7 +74,8 @@ def detect_note_from_fft(data):
         closest = min(PIANO_NOTES, key=lambda x: abs(x[1] - peak_freq))
         freq_diff = abs(closest[1] - peak_freq)
         
-        if freq_diff > (NOTE_SENSITIVITY * 10):
+        # NOTA_SENSITIVITY değeri daha yüksek, daha toleranslı
+        if freq_diff > NOTE_SENSITIVITY:
             return None
             
         return closest[0]
@@ -135,11 +135,11 @@ def main():
             print(f"[FATAL] Hiçbir cihazla akış açılamadı: {e2}")
             return
 
-    # MQTT istemcisi - DeprecationWarning'den kaçınmak için
+    # MQTT istemcisi
     try:
         mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     except:
-        mqttc = mqtt.Client()  # Fallback
+        mqttc = mqtt.Client()
     
     mqttc.username_pw_set(MQTT_USER, MQTT_PASS)
     
@@ -149,31 +149,42 @@ def main():
     except Exception as e:
         print(f"[MQTT_ERROR] Bağlantı hatası: {e}")
 
-    # 📊 Ses analizi için değişkenler - BURADA TANIMLA!
+    # 📊 Ses analizi için değişkenler
     level_history = deque(maxlen=20)
-    last_detection_time = 0  # ✅ BU SATIR EKLENDİ
+    last_detection_time = 0
     cooldown_period = 2
+    continuous_high_level_start = 0
+    continuous_detection_threshold = 2  # 2 saniye boyunca yüksek seviye
 
     print("[START] Çamaşır makinesi melodisi dinleniyor...")
     print(f"[CONFIG] Eşik: {RMS_THRESHOLD}, Kazanç: {MIC_GAIN}, Nota Tespiti: {ENABLE_NOTE_DETECTION}")
 
-    # 🔍 Basit melodi tespiti fonksiyonu
-    def detect_melody_pattern(levels, current_level):
+    # 🔍 Geliştirilmiş melodi tespiti fonksiyonu
+    def detect_melody_pattern(levels, current_level, current_time):
         level_history.append(current_level)
         
-        if len(level_history) < level_history.maxlen:
-            return False
+        # Yöntem 1: Seviye dalgalanmaları (orijinal yöntem)
+        if len(level_history) >= level_history.maxlen:
+            recent_levels = list(level_history)
+            level_variance = np.var(recent_levels)
             
-        recent_levels = list(level_history)
-        level_variance = np.var(recent_levels)
-        
-        # Melodi genellikle dalgalanmalı bir yapıya sahiptir
-        if level_variance > 100000:
-            peaks = 0
-            for i in range(1, len(recent_levels)-1):
-                if recent_levels[i] > recent_levels[i-1] and recent_levels[i] > recent_levels[i+1]:
-                    peaks += 1
-            return peaks >= 3
+            if level_variance > 100000:
+                peaks = 0
+                for i in range(1, len(recent_levels)-1):
+                    if recent_levels[i] > recent_levels[i-1] and recent_levels[i] > recent_levels[i+1]:
+                        peaks += 1
+                if peaks >= 3:
+                    return True
+
+        # Yöntem 2: Sürekli yüksek seviye
+        if current_level >= RMS_THRESHOLD:
+            if continuous_high_level_start == 0:
+                continuous_high_level_start = current_time
+            elif current_time - continuous_high_level_start >= continuous_detection_threshold:
+                return True
+        else:
+            continuous_high_level_start = 0
+
         return False
 
     while True:
@@ -188,10 +199,11 @@ def main():
 
             # Seviye eşiğini aşma kontrolü
             if rms < RMS_THRESHOLD:
+                continuous_high_level_start = 0  # Sıfırla
                 continue
 
             # Melodi deseni tespiti
-            is_melody = detect_melody_pattern(level_history, rms)
+            is_melody = detect_melody_pattern(level_history, rms, current_time)
             
             if ENABLE_NOTE_DETECTION:
                 note = detect_note_from_fft(data)
@@ -202,6 +214,15 @@ def main():
                         "note": note,
                         "level": float(rms),
                         "pattern": is_melody,
+                        "timestamp": current_time
+                    }))
+                    last_detection_time = current_time
+                elif is_melody:
+                    # Nota tespit edilemese bile melodi deseni varsa
+                    print(f"[MELODY] 🔔 Desen tespit edildi! (Seviye: {rms:.2f})")
+                    mqttc.publish(MQTT_TOPIC, json.dumps({
+                        "type": "melody_pattern",
+                        "level": float(rms),
                         "timestamp": current_time
                     }))
                     last_detection_time = current_time
@@ -226,7 +247,7 @@ def main():
             continue
         except Exception as e:
             print(f"[ERROR] Akış okuma hatası: {e}")
-            time.sleep(10)
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()
