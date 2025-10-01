@@ -7,7 +7,7 @@ import paho.mqtt.client as mqtt
 
 # 🔧 Ortam değişkenleri
 DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
-MIC_GAIN = float(os.getenv("MIC_GAIN", "1.0"))
+MIC_GAIN = float(os.getenv("MIC_GAIN", "2.0"))
 RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "500"))
 ENABLE_NOTE_DETECTION = os.getenv("ENABLE_NOTE_DETECTION", "false").lower() == "true"
 NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "1.0"))
