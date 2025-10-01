@@ -226,7 +226,7 @@ def main():
             continue
         except Exception as e:
             print(f"[ERROR] Akış okuma hatası: {e}")
-            time.sleep(1)
+            time.sleep(10)
 
 if __name__ == "__main__":
     main()
