@@ -1,13 +1,13 @@
+import os
+# ALSA hata mesajlarını bastır - EN ÜSTTE olmalı
+os.environ['PYAUDIO_IGNORE_ALSA_PLUGINS'] = '1'
+
 import pyaudio
 import numpy as np
 import json
-import os
 import time
 import paho.mqtt.client as mqtt
-import sys
-from contextlib import redirect_stderr
-with redirect_stderr(open(os.devnull, 'w')):
-    import pyaudio
+from collections import deque
 
 # 🔧 ALSA default'ını ayarla (uyarıları bastır)
 os.environ['ALSA_PCM_CARD'] = '2'
