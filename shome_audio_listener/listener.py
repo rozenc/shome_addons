@@ -7,18 +7,18 @@ import paho.mqtt.client as mqtt
 
 # 🔧 Ortam değişkenleri
 DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
-MIC_GAIN = float(os.getenv("MIC_GAIN", "2.0"))
-RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "500"))
+MIC_GAIN = float(os.getenv("MIC_GAIN", "1.0"))
+RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "2500"))
 ENABLE_NOTE_DETECTION = os.getenv("ENABLE_NOTE_DETECTION", "false").lower() == "true"
-NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "1.0"))
+NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "10.0"))  # Varsayılanı artırdık
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER = os.getenv("MQTT_USER", "shome")
 MQTT_PASS = os.getenv("MQTT_PASS", "a")
 MQTT_TOPIC = "shome/devices/sHome-Listener"
 
-# 🎚️ Ses parametreleri
-CHUNK = 1024
+# 🎚️ Ses parametreleri (CHUNK artırdık)
+CHUNK = 4096
 RATE = 44100
 
 # 🎼 Piyano nota frekansları (A0–C8)
@@ -37,13 +37,17 @@ def get_rms(data):
     rms = np.sqrt(np.mean(samples**2))
     return rms
 
-# 🎼 FFT ile nota tahmini (opsiyonel)
+# 🎼 FFT ile nota tahmini (iyileştirildi: Hann window + daha iyi resolution)
 def detect_note_from_fft(data):
     samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
     if samples.size == 0:
         return None
 
-    fft = np.fft.fft(samples)
+    # Hann window uygula (leakage azalt)
+    window = np.hanning(len(samples))
+    windowed = samples * window
+
+    fft = np.fft.fft(windowed)
     freqs = np.fft.fftfreq(len(fft), 1.0 / RATE)
     magnitude = np.abs(fft)
     peak_index = np.argmax(magnitude[:len(magnitude)//2])
