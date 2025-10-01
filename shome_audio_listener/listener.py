@@ -9,7 +9,7 @@ import paho.mqtt.client as mqtt
 from collections import deque
 
 # 🔧 Ortam değişkenleri
-DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
+DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "2"))
 MIC_GAIN = float(os.getenv("MIC_GAIN", "1.5"))
 RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "1000"))
 ENABLE_NOTE_DETECTION = os.getenv("ENABLE_NOTE_DETECTION", "true").lower() == "true"
