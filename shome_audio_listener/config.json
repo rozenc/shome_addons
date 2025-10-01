@@ -1,6 +1,6 @@
 {
   "name": "sHome Audio Listener",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "slug": "shome_audio_listener",
   "description": "Çamaşır melodisini tanıyan, nota eşleştiren ve MQTT ile HA'ya bildiren mikrofon dinleyici.",
   "startup": "application",

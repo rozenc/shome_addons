@@ -4,20 +4,28 @@ import json
 import os
 import time
 import paho.mqtt.client as mqtt
+import sys
+from contextlib import redirect_stderr
+with redirect_stderr(open(os.devnull, 'w')):
+    import pyaudio
+
+# 🔧 ALSA default'ını ayarla (uyarıları bastır)
+os.environ['ALSA_PCM_CARD'] = '2'
+os.environ['ALSA_CTL_CARD'] = '2'
 
 # 🔧 Ortam değişkenleri
-DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "-1"))
-MIC_GAIN = float(os.getenv("MIC_GAIN", "1.0"))
-RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "2500"))
+DEVICE_INDEX = int(os.getenv("DEVICE_INDEX", "2"))  # Varsayılanı 2 yap
+MIC_GAIN = float(os.getenv("MIC_GAIN", "2"))
+RMS_THRESHOLD = int(os.getenv("RMS_THRESHOLD", "500"))
 ENABLE_NOTE_DETECTION = os.getenv("ENABLE_NOTE_DETECTION", "false").lower() == "true"
-NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "10.0"))  # Varsayılanı artırdık
+NOTE_SENSITIVITY = float(os.getenv("NOTE_SENSITIVITY", "10.0"))
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER = os.getenv("MQTT_USER", "shome")
 MQTT_PASS = os.getenv("MQTT_PASS", "a")
 MQTT_TOPIC = "shome/devices/sHome-Listener"
 
-# 🎚️ Ses parametreleri (CHUNK artırdık)
+# 🎚️ Ses parametreleri
 CHUNK = 4096
 RATE = 44100
 
@@ -37,13 +45,13 @@ def get_rms(data):
     rms = np.sqrt(np.mean(samples**2))
     return rms
 
-# 🎼 FFT ile nota tahmini (iyileştirildi: Hann window + daha iyi resolution)
+# 🎼 FFT ile nota tahmini (iyileştirildi)
 def detect_note_from_fft(data):
     samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
     if samples.size == 0:
         return None
 
-    # Hann window uygula (leakage azalt)
+    # Hann window uygula
     window = np.hanning(len(samples))
     windowed = samples * window
 
@@ -52,6 +60,8 @@ def detect_note_from_fft(data):
     magnitude = np.abs(fft)
     peak_index = np.argmax(magnitude[:len(magnitude)//2])
     peak_freq = abs(freqs[peak_index])
+
+    print(f"[DEBUG] Peak freq: {peak_freq:.2f} Hz")  # Opsiyonel debug (kaldırabilirsin)
 
     if peak_freq < 20 or peak_freq > 5000:
         return None
@@ -75,7 +85,7 @@ def main():
         print(f"[ERROR] Cannot open stream: {e}")
         return
 
-    mqttc = mqtt.Client(protocol=mqtt.MQTTv5)
+    mqttc = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
     mqttc.username_pw_set(MQTT_USER, MQTT_PASS)
     mqttc.connect(MQTT_HOST, MQTT_PORT)
 
